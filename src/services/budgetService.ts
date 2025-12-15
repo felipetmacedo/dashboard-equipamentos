@@ -1,46 +1,54 @@
-import { budgetSuggestions } from "@/data/budgetSuggestions";
-import { equipments } from "@/data/equipments";
 import { BudgetDistributionResult, BudgetSuggestion } from "@/types";
+import { API_BASE_URL, API_ENDPOINTS } from "@/config/api";
 
-const DELAY_MS = 200;
-
-const delay = () => new Promise(resolve => setTimeout(resolve, DELAY_MS));
-
+/**
+ * Distribute budget and get equipment purchase suggestions
+ */
 export async function distributeBudget(budget: number): Promise<BudgetDistributionResult> {
-  await delay();
-  
-  // Sort equipment by priority score (descending) to prioritize replacements
-  const sortedEquipments = [...equipments]
-    .sort((a, b) => b.prioridadeScore - a.prioridadeScore);
-  
-  const suggestions: BudgetSuggestion[] = [];
-  let remainingBudget = budget;
-  let totalConsumido = 0;
-  
-  // For each high-priority equipment, find a matching suggestion
-  for (const equipment of sortedEquipments) {
-    const suggestion = budgetSuggestions.find(
-      s => s.substituicaoEquipamentoId === equipment.identificador
-    );
+  try {
+    const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.distributeBudget}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ orcamento: budget })
+    });
     
-    if (suggestion && suggestion.custo <= remainingBudget) {
-      suggestions.push(suggestion);
-      remainingBudget -= suggestion.custo;
-      totalConsumido += suggestion.custo;
+    if (!response.ok) {
+      throw new Error(`Failed to distribute budget: ${response.statusText}`);
     }
     
-    if (remainingBudget <= 0) break;
+    const data = await response.json();
+    
+    return {
+      suggestions: data.suggestions || [],
+      totalConsumido: data.totalConsumido || 0,
+      saldo: data.saldo || budget
+    };
+  } catch (error) {
+    console.error('Error distributing budget:', error);
+    
+    // Return empty result on error
+    return {
+      suggestions: [],
+      totalConsumido: 0,
+      saldo: budget
+    };
   }
-  
-  return {
-    suggestions,
-    totalConsumido,
-    saldo: remainingBudget
-  };
 }
 
+/**
+ * Get all suggested replacement equipment
+ * This is a helper function that calls distributeBudget with a large budget
+ */
 export async function getSuggestedReplacements(): Promise<BudgetSuggestion[]> {
-  await delay();
-  return budgetSuggestions;
+  try {
+    // Use a very large budget to get all possible suggestions
+    const result = await distributeBudget(999999999);
+    return result.suggestions;
+  } catch (error) {
+    console.error('Error fetching suggested replacements:', error);
+    return [];
+  }
 }
 

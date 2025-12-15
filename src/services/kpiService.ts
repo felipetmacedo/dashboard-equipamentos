@@ -1,48 +1,57 @@
-import { equipments } from "@/data/equipments";
 import { KPIData } from "@/types";
+import { API_BASE_URL, API_ENDPOINTS } from "@/config/api";
 
-const DELAY_MS = 200;
-
-const delay = () => new Promise(resolve => setTimeout(resolve, DELAY_MS));
-
+/**
+ * Fetch all KPI data from the backend
+ */
 export async function getKPIData(): Promise<KPIData> {
-  await delay();
-  
-  // Calculate top 5 priority equipment IDs
-  const topPrioridade = [...equipments]
-    .sort((a, b) => b.prioridadeScore - a.prioridadeScore)
-    .slice(0, 5)
-    .map(e => e.identificador);
-  
-  // Calculate percentage of equipment older than 10 years
-  const currentYear = new Date().getFullYear();
-  const oldEquipmentCount = equipments.filter(e => {
-    const acquisitionYear = new Date(e.dataAquisicao).getFullYear();
-    return currentYear - acquisitionYear > 10;
-  }).length;
-  
-  const percentualAntigos = (oldEquipmentCount / equipments.length) * 100;
-  
-  // Calculate total equipment count
-  const totalEquipamentos = equipments.length;
-  
-  // Calculate equipment in maintenance
-  const equipamentosEmManutencao = equipments.filter(
-    e => e.status === "Em Manutenção"
-  ).length;
-  
-  // Calculate total external cost
-  const custoExternoTotal = equipments.reduce(
-    (sum, e) => sum + e.totalCustoExterno, 
-    0
-  );
-  
-  return {
-    topPrioridade,
-    percentualAntigos: Math.round(percentualAntigos * 10) / 10,
-    orcamentoDisponivel: 350000.00,
-    totalEquipamentos,
-    equipamentosEmManutencao,
-    custoExternoTotal
-  };
+  try {
+    // Fetch all KPI data in parallel
+    const [
+      totalEquipamentosRes,
+      equipamentosEmManutencaoRes,
+      percentualAntigosRes,
+      custoExternoTotalRes,
+      topPrioridadeRes
+    ] = await Promise.all([
+      fetch(`${API_BASE_URL}${API_ENDPOINTS.totalEquipments}`),
+      fetch(`${API_BASE_URL}${API_ENDPOINTS.maintenanceCount}`),
+      fetch(`${API_BASE_URL}${API_ENDPOINTS.agePercentage}`),
+      fetch(`${API_BASE_URL}${API_ENDPOINTS.externalCostTotal}`),
+      fetch(`${API_BASE_URL}${API_ENDPOINTS.topPriority}`)
+    ]);
+
+    // Parse all responses
+    const totalEquipamentosData = await totalEquipamentosRes.json();
+    const equipamentosEmManutencaoData = await equipamentosEmManutencaoRes.json();
+    const percentualAntigosData = await percentualAntigosRes.json();
+    const custoExternoTotalData = await custoExternoTotalRes.json();
+    const topPrioridadeData = await topPrioridadeRes.json();
+
+    // Extract top 5 equipment IDs
+    const topPrioridade = Array.isArray(topPrioridadeData)
+      ? topPrioridadeData.map((eq: any) => eq.identificador)
+      : [];
+
+    return {
+      topPrioridade,
+      percentualAntigos: percentualAntigosData.porcentagem || 0,
+      orcamentoDisponivel: 350000.00, // Keep as frontend-managed value for now
+      totalEquipamentos: totalEquipamentosData.total_equipamentos || 0,
+      equipamentosEmManutencao: equipamentosEmManutencaoData.quantidade_em_manutencao || 0,
+      custoExternoTotal: custoExternoTotalData.custo_total_bruto || 0
+    };
+  } catch (error) {
+    console.error('Error fetching KPI data:', error);
+    
+    // Return default values on error
+    return {
+      topPrioridade: [],
+      percentualAntigos: 0,
+      orcamentoDisponivel: 350000.00,
+      totalEquipamentos: 0,
+      equipamentosEmManutencao: 0,
+      custoExternoTotal: 0
+    };
+  }
 }
